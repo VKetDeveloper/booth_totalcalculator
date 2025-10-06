@@ -342,7 +342,7 @@
                 }
 
                 const text = await response.text();
-                const matched = text.match(/購入額.*?¥\s*([\d,]+)/);
+                const matched = text.match(/お支払金額.*?¥\s*([\d,]+)/);
                 const isGift = text.includes(
                     '<b class="u-tpg-title3">ギフト</b>'
                 );
@@ -506,7 +506,7 @@
                 )}あれば...\n『${comparison}』`;
             }
 
-            tweetText += `\n\n#Booth購入金額`;
+            tweetText += `\n\n#私がBoothに使った金額`;
 
             const tweetURL = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
                 tweetText
