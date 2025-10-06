@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Booth散財チェッカー",
+  "description": "Boothの購入履歴から総額を計算します（ユーザースクリプトをChrome拡張へ移植）",
+  "version": "1.0.0",
+  "author": "zeruku (converted)",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://accounts.booth.pm/orders*",
+    "https://accounts.booth.pm/orders/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://accounts.booth.pm/orders",
+        "https://accounts.booth.pm/orders?*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}
