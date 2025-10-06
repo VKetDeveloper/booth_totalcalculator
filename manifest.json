@@ -3,12 +3,10 @@
   "name": "Booth散財チェッカー",
   "description": "Boothの購入履歴から総額を計算します",
   "version": "1.0.2",
-  "author": "Mika (VRUGD)",
+  "author": "Mika",
   "permissions": [
     "storage",
-    "tabs",
-    "scripting",
-    "activeTab"
+    "tabs"
   ],
   "host_permissions": [
     "https://accounts.booth.pm/orders*",
@@ -22,13 +20,7 @@
       ],
       "js": [
         "content.js"
-      ],
-      "run_at": "document_idle"
+      ]
     }
-  ],
-  "icons": {
-    "16": "icons/29.png",
-    "48": "icons/48.png",
-    "128": "icons/128.png"
-  }
+  ]
 }
