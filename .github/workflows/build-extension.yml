@@ -1,0 +1,160 @@
+name: Build & Release Browser Extension (Chrome/Edge)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [chrome, edge]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      # --- ここで manifest の version を取得（Chrome/Edgeどちらでも同じversion想定） ---
+      - name: Extract version from manifest
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 優先順で manifest を探す（見つかった最初のもの）
+          CANDIDATES=("manifest.chrome.json" "manifest.json" "src/manifest.json")
+          MANIFEST=""
+          for f in "${CANDIDATES[@]}"; do
+            if [ -f "$f" ]; then
+              MANIFEST="$f"
+              break
+            fi
+          done
+
+          if [ -z "$MANIFEST" ]; then
+            echo "❌ manifest file not found. Looked for: ${CANDIDATES[*]}"
+            exit 1
+          fi
+
+          echo "Using manifest: $MANIFEST"
+          VERSION=$(node -p "require('./$MANIFEST').version")
+          if [ -z "$VERSION" ]; then
+            echo "❌ version not found in $MANIFEST"
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # --- ビルド（必要なら BUILD_TARGET を使って分岐できる） ---
+      - name: Build
+        run: npm run build
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+
+      # --- dist に manifest を配置（Chrome/Edgeで差し替えたい場合） ---
+      - name: Put manifest for target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "dist" ]; then
+            echo "❌ dist/ not found. Ensure npm run build outputs dist/"
+            exit 1
+          fi
+
+          # Edge/Chrome別manifestがあるなら優先して使う
+          if [ "${{ matrix.target }}" = "chrome" ] && [ -f "manifest.chrome.json" ]; then
+            cp manifest.chrome.json dist/manifest.json
+          elif [ "${{ matrix.target }}" = "edge" ] && [ -f "manifest.edge.json" ]; then
+            cp manifest.edge.json dist/manifest.json
+          elif [ -f "manifest.json" ]; then
+            cp manifest.json dist/manifest.json
+          elif [ -f "src/manifest.json" ]; then
+            cp src/manifest.json dist/manifest.json
+          else
+            # ここまで来たら上の Extract と同じく見つからないはずなので念のため落とす
+            echo "❌ No manifest file available to copy into dist/"
+            exit 1
+          fi
+
+      # --- ZIP化（ZIP直下に manifest.json が来る形） ---
+      - name: Pack ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -r "../extension-${{ matrix.target }}-${{ steps.ver.outputs.version }}.zip" .
+          cd ..
+
+      # --- tag & release は一回だけやりたいので、chrome 側で作成（edge側は添付だけ） ---
+      - name: Create tag & release (once)
+        if: matrix.target == 'chrome'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = "${{ steps.ver.outputs.tag }}";
+
+            // 既にタグがあるか確認
+            let tagExists = true;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+            } catch (e) {
+              tagExists = false;
+            }
+
+            if (!tagExists) {
+              // 現在のコミットにタグを作る
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${tag}`,
+                sha: context.sha,
+              });
+              core.info(`Created tag ${tag} at ${context.sha}`);
+            } else {
+              core.info(`Tag ${tag} already exists`);
+            }
+
+            // Release があるか確認（なければ作成）
+            let release;
+            try {
+              release = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              core.info(`Release already exists for ${tag}`);
+            } catch (e) {
+              release = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                name: tag,
+                draft: false,
+                prerelease: false,
+                generate_release_notes: true,
+              });
+              core.info(`Created release for ${tag}`);
+            }
+
+      # --- Release にZIP添付（両ターゲットとも） ---
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: |
+            extension-${{ matrix.target }}-${{ steps.ver.outputs.version }}.zip

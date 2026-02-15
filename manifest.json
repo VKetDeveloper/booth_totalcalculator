@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Booth散財チェッカー",
   "description": "Boothの購入履歴から総額を計算します",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Mika",
   "permissions": [
     "storage",
